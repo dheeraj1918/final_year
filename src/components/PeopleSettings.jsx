@@ -1,10 +1,8 @@
-import { PeopleSettings } from 'react-chat-engine';
-
 const PepleSettings = (props) => {
 
     return(
         
-        <PeopleSettings />
+        <div>People Settings Placeholder</div>
     );
 
 }

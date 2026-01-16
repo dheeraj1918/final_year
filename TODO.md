@@ -1,0 +1,4 @@
+- [ ] Update React and react-dom to version 18 in package.json
+- [ ] Update src/index.js to use createRoot from 'react-dom/client'
+- [ ] Run npm install to install updated dependencies
+- [ ] Test the build with npm run build

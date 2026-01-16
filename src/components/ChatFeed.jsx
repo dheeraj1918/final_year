@@ -1,66 +1,132 @@
+import { useState, useEffect, useRef } from 'react';
+import { onSnapshot, addDoc, serverTimestamp, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { db, collection, orderBy, query } from '../firebase';
 import MyMessage from "./MyMessage";
 import TheirMessage from "./TheirMessage";
 import MessageForm from "./MessageForm";
 
-const ChatFeed = (props) => {
+const ChatFeed = ({ chats, chatId, user, onMenuClick }) => {
+    const [messages, setMessages] = useState([]);
+    const [isFavorite, setIsFavorite] = useState(false);
+    const messagesEndRef = useRef(null);
+    const timersRef = useRef(new Map());
 
-    const {chats, activeChat, userName, messages} = props;
+    const activeChat = chats?.find(chat => chat.id === chatId);
+    const otherUser = activeChat?.participants.find(p => p !== user.email);
 
-    const chat = chats && chats[activeChat];
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
 
-    const renderReadReceipts = (message, isMyMessage)=> chat.people.map((person, index)=> person.last_read === message.id && (
-        <div 
-        key ={`read_${index}`}
-        className = "read-receipt"
-        style = {{
-            float : isMyMessage ? 'right' : 'left',
-            backgroundImage : person.person.avatar && `url(${person.person.avatar})`
-        }}>
-            
-        </div>
-    ));
-    
-    const renderMessages = () => {
-        const  keys = Object.keys(messages);
+    useEffect(() => {
+        if (!chatId) return;
 
-        return keys.map((key, index ) => {
-            const message = messages[key];
-            const lastMessageKey = index=== 0? null:keys[index-1];
-            const isMyMessage = userName === message.sender.username;
+        const chatRef = doc(db, 'chats', chatId);
+        const unsubscribeChat = onSnapshot(chatRef, (doc) => {
+            if (doc.exists()) {
+                setIsFavorite(doc.data().favorite || false);
+            }
+        });
 
-            
-            return (
-                <div key={`msg_${index}`} style={{width: '100%'}}>
-                    <div className="message-block">
-                        {
-                            isMyMessage 
-                                ? <MyMessage message={message}/>
-                                : <TheirMessage message={message} lastMessage={messages[lastMessageKey]} />
+        const unsubscribeMessages = onSnapshot(
+            query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp')),
+            (snapshot) => {
+                const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setMessages(msgs);
+            }
+        );
 
+        return () => {
+            unsubscribeChat();
+            unsubscribeMessages();
+        };
+    }, [chatId]);
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages]);
+
+    useEffect(() => {
+        messages.forEach(message => {
+            if (message.timer && message.timer > 0) {
+                const messageId = message.id;
+                const timerKey = `${chatId}-${messageId}`;
+
+                if (!timersRef.current.has(timerKey)) {
+                    const timerId = setTimeout(async () => {
+                        try {
+                            await deleteDoc(doc(db, 'chats', chatId, 'messages', messageId));
+                            timersRef.current.delete(timerKey);
+                        } catch (error) {
+                            console.error('Error deleting timed message:', error);
                         }
-                    </div>
-                    <div className="read-reciepts" style={{marginRight: isMyMessage ? '18px' : '0px', marginLeft: isMyMessage ? '0': '18px'}}>
-                        {renderReadReceipts(message, isMyMessage)}
-                    </div>
-                </div>
-            )
-        })
-    }
-    
-    return(
+                    }, message.timer * 60 * 1000); 
+
+                    timersRef.current.set(timerKey, timerId);
+                }
+            }
+        });
+
+        return () => {
+            timersRef.current.forEach(timerId => clearTimeout(timerId));
+            timersRef.current.clear();
+        };
+    }, [messages, chatId]);
+
+    const sendMessage = async (messageData) => {
+        if (!chatId) return;
+        await addDoc(collection(db, 'chats', chatId, 'messages'), {
+            ...messageData,
+            sender: { 
+                username: user.email,
+                displayName: user.displayName,
+                photoURL: user.photoURL,
+                email: user.email 
+            },
+            timestamp: serverTimestamp()
+        });
+    };
+
+    const toggleFavorite = async () => {
+        if (!chatId) return;
+        const chatRef = doc(db, 'chats', chatId);
+        try {
+            await updateDoc(chatRef, {
+                favorite: !isFavorite
+            });
+        } catch (error) {
+            console.error("Error updating favorite status: ", error);
+        }
+    };
+
+    return (
         <div className="chat-feed">
-            <div className="chat-title-container">
-                <div className="chat-title">{chat?.title}</div>
-                <div className="chat-subtitle"></div>
-                {renderMessages()}
-                <div style={{ height: '100px' }}></div>
-                <div className="message-form-container">
-                    <MessageForm {...props} chatId={activeChat} />
+            <div className="chat-header">
+                <div className="chat-header-left">
+                    <button className="menu-btn" onClick={onMenuClick}>
+                        &#9776;
+                    </button>
+                    <button className="favorite-btn" onClick={toggleFavorite} style={{ color: isFavorite ? 'gold' : '#666' }}>
+                        &#9733;
+                    </button>
                 </div>
+                <div className="chat-title">{otherUser || 'Chat'}</div>
             </div>
+            <div className="messages-container">
+                {messages.map((message, index) => {
+                    const lastMessage = index === 0 ? null : messages[index - 1];
+                    const isMyMessage = user.email === message.sender.username;
+
+                    if (isMyMessage) {
+                        return <MyMessage key={message.id} message={message} />;
+                    }
+                    return <TheirMessage key={message.id} message={message} lastMessage={lastMessage} />;
+                })}
+                <div ref={messagesEndRef} />
+            </div>
+            <MessageForm sendMessage={sendMessage} />
         </div>
-    )
-
-}
-
+    );
+};
+ 
 export default ChatFeed;

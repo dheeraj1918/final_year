@@ -1,72 +1,70 @@
 import { useState } from "react";
-import axios from "axios";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../firebase";
 
-const LoginForm = () =>{
-
-    const [username, setUserName] = useState('');
+const LoginForm = () => {
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [error, setError] =useState('');
+    const [error, setError] = useState('');
+    const [isSigningUp, setIsSigningUp] = useState(false);
 
-    const handleSubmit = async(e) =>{
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setError('');
 
-        const authObject = {'Project-ID': process.env.REACT_APP_PROJECT_ID_KEY, 'User-Name': username, 'User-Secret':password}
-
-        try{
-            await axios.get('https://api.chatengine.io/chats', {headers: authObject});
-
-            localStorage.setItem('username', username);
-            localStorage.setItem('password',password);
-
-            window.location.reload();
-            setError('');
+        try {
+            if (isSigningUp) {
+                await createUserWithEmailAndPassword(auth, email, password);
+            } else {
+                await signInWithEmailAndPassword(auth, email, password);
+            }
+        } catch (err) {
+            setError(err.message);
         }
-        catch(err){
-            setError('opps incorrect credentials');
-        }
-    }
-    
-    const signUp = async(e) =>{
-        e.preventDefault();
-
-        const authObject =  {'Private-Key': process.env.REACT_APP_Private_KEY};
-
-        try{
-            await axios.post(
-                "https://api.chatengine.io/users/",
-                {'username': username, 'secret': password}, // Body object
-                {'headers': authObject} // Headers object
-              );
-
-            localStorage.setItem('username', username);
-            localStorage.setItem('password',password);
-
-            window.location.reload();
-            setError('');
-        }
-        catch(err){
-            setError('opps error creating new user');
-            console.log(err);
-        }
-
-    }
+    };
 
     return (
-        <div className="wrapper">
-            <div className="form">
-                <h1 className="title">Chat Application</h1>
-                <form onSubmit={handleSubmit}>
-                    <input type="text" value={username} onChange={(e)=> setUserName(e.target.value)} className="input" placeholder="Username" required />
-                    <input type="password" value={password} onChange={(e)=> setPassword(e.target.value)} className="input" placeholder="Password" required />
-                    <div align="center">
-                        <button type="submit" className="button"><span>Log in</span></button>
-                        <button onClick={signUp} className="button"><span>sign up</span></button>
+        <div className="login-wrapper">
+            <div className="login-form-container">
+                <h1 className="login-title">{isSigningUp ? 'Create an Account' : 'Welcome Back!'}</h1>
+                <p className="login-subtitle">Connect and chat with your friends.</p>
+                <form onSubmit={handleSubmit} className="login-form">
+                    <div className="input-group">
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="login-input"
+                            placeholder="Email Address"
+                            required
+                            autoComplete="email"
+                        />
                     </div>
+                    <div className="input-group">
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="login-input"
+                            placeholder="Password"
+                            required
+                            autoComplete="current-password"
+                        />
+                    </div>
+                    {error && <p className="login-error">{error}</p>}
+                    <button type="submit" className="login-button">
+                        {isSigningUp ? 'Sign Up' : 'Log In'}
+                    </button>
+                    <p className="toggle-form">
+                        {isSigningUp ? 'Already have an account?' : "Don't have an account?"}
+                        <button type="button" onClick={() => setIsSigningUp(!isSigningUp)} className="toggle-button">
+                            {isSigningUp ? 'Log In' : 'Sign Up'}
+                        </button>
+                    </p>
                 </form>
-                <h1>{error}</h1>
             </div>
         </div>
-    )
+    );
 }
 
 export default LoginForm;

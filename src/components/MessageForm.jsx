@@ -1,62 +1,82 @@
 import { useState } from "react";
-import {SendOutlined, PictureOutlined} from "@ant-design/icons";
-import { sendMessage, isTyping } from "react-chat-engine";
+import { SendOutlined, PaperClipOutlined, ClockCircleOutlined } from "@ant-design/icons";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "../firebase";
 
-const MessageForm = (props) => {
+const MessageForm = ({ sendMessage }) => {
+    const [value, setValue] = useState('');
+    const [timerValue, setTimerValue] = useState('');
+    const [showTimer, setShowTimer] = useState(false);
 
-    const[value, setValue] =useState('');
-    const { chatId, creds} =props;
-    
-    const handleChange = (e) => {
-        setValue(e.target.value);
-        isTyping(props, chatId);
-    }
-    
-    const handleSubmit = (e) =>{
+    const handleSubmit = (e) => {
         e.preventDefault();
-
         const text = value.trim();
-
-        if( text.length >0){
-            sendMessage(creds, chatId, { text});
+        const timer = parseInt(timerValue, 10) || 0;
+        if (text) {
+            sendMessage({ text, timer: timer > 0 ? timer : null });
         }
-
         setValue('');
-    }
-    
-    const handleUpload = (e) => {
-        sendMessage(creds, chatId,  {files: e.target.files, text:''})
-    }
-    
-    return(
-        <form className="message-form" onSubmit={handleSubmit}>
-            <input 
-            className="message-input"
-            value={value}
-            onChange={handleChange}
-            onSubmit={handleSubmit}
-            />
+        setTimerValue('');
+        setShowTimer(false);
+    };
 
-            <label htmlFor="upload-button">
-                <span className="image-button">
-                    <PictureOutlined className="picture-icon" />
-                </span>
-            </label>
+    const handleUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-            <input
-            type="file"
-            multiple={true}
-            id="upload-button"
-            style={{display: 'none'}}
-            onChange={handleUpload.bind(this)}
-            />
+        const timer = parseInt(timerValue, 10) || 0;
+        const storageRef = ref(storage, `files/${Date.now()}_${file.name}`);
+        await uploadBytes(storageRef, file);
+        const downloadURL = await getDownloadURL(storageRef);
 
-            <button type="submit" className="send-button">
-                <SendOutlined className="send-icon"/>
-            </button>
-        </form>
-    )
+        sendMessage({
+            attachments: [{ file: downloadURL, type: file.type }],
+            timer: timer > 0 ? timer : null
+        });
+        setTimerValue('');
+        setShowTimer(false);
+    };
 
-}
+    return (
+        <div className="message-form-container">
+            <form className="message-form" onSubmit={handleSubmit}>
+                <input
+                    className="message-input"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    placeholder="Type a message..."
+                    autoFocus
+                />
+                <div className="message-form-actions">
+                    <label htmlFor="upload-button" className="action-btn">
+                        <PaperClipOutlined />
+                    </label>
+                    <input
+                        type="file"
+                        id="upload-button"
+                        style={{ display: 'none' }}
+                        onChange={handleUpload}
+                        accept="image/*,video/*"
+                    />
+                    <button type="button" className="action-btn" onClick={() => setShowTimer(!showTimer)}>
+                        <ClockCircleOutlined />
+                    </button>
+                    {showTimer && (
+                        <input
+                            type="text"
+                            className="timer-input"
+                            value={timerValue}
+                            onChange={(e) => /^\d*$/.test(e.target.value) && setTimerValue(e.target.value)}
+                            placeholder="min"
+                        />
+                    )}
+                    <button type="submit" className="send-btn" disabled={!value.trim()}>
+                        <SendOutlined />
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+};
 
 export default MessageForm;
