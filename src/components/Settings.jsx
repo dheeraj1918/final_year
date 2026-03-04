@@ -3,6 +3,19 @@ import { updateProfile } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, storage } from '../firebase';
 
+// Helper function to determine MIME type from file extension
+const getMimeTypeFromExtension = (fileName) => {
+    const ext = fileName.split('.').pop().toLowerCase();
+    const mimeTypes = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp'
+    };
+    return mimeTypes[ext] || 'image/jpeg';
+};
+
 const Settings = ({ user, setCurrentUser }) => {
     const [displayName, setDisplayName] = useState(user.displayName || '');
     const [photo, setPhoto] = useState(null);
@@ -16,11 +29,39 @@ const Settings = ({ user, setCurrentUser }) => {
         setError('');
 
         try {
+            if (!auth.currentUser) {
+                throw new Error('User not authenticated. Please log in again.');
+            }
+
             let newPhotoURL = photoURL;
             if (photo) {
-                const photoRef = ref(storage, `avatars/${user.uid}/${photo.name}`);
-                await uploadBytes(photoRef, photo);
+                // Validate file size (5 MB limit)
+                const maxSize = 5 * 1024 * 1024;
+                if (photo.size > maxSize) {
+                    throw new Error('Image size exceeds 5 MB limit.');
+                }
+
+                // Generate a unique filename to avoid conflicts and special character issues
+                const timestamp = Date.now();
+                const fileExtension = photo.name.split('.').pop();
+                const fileName = `avatar_${timestamp}.${fileExtension}`;
+                const photoRef = ref(storage, `images/${user.uid}/${fileName}`);
+                
+                // Get MIME type from file object or fallback to extension-based detection
+                const contentType = photo.type || getMimeTypeFromExtension(photo.name);
+                
+                const metadata = {
+                    contentType: contentType,
+                    cacheControl: 'public, max-age=3600'
+                };
+                
+                console.log('Uploading avatar for user:', user.uid);
+                await uploadBytes(photoRef, photo, metadata);
+                console.log('✓ Avatar uploaded successfully!');
+                
+                console.log('Getting download URL...');
                 newPhotoURL = await getDownloadURL(photoRef);
+                console.log('✓ Avatar download URL obtained');
             }
 
             await updateProfile(auth.currentUser, {
@@ -28,15 +69,22 @@ const Settings = ({ user, setCurrentUser }) => {
                 photoURL: newPhotoURL,
             });
             
-            // Passing the updated user to the parent component is not straightforward
-            // because the auth object is not directly mutable in the parent state from here.
-            // A page reload or a global state management would be needed.
-            // For now, we can update the local state to reflect the change visually.
             setPhotoURL(newPhotoURL);
             alert('Profile updated successfully! Refresh to see changes everywhere.');
 
         } catch (err) {
-            setError(err.message);
+            console.error('❌ Profile update error:');
+            console.error('  Code:', err.code);
+            console.error('  Message:', err.message);
+            
+            let userMessage = err.message;
+            if (err.code === 'storage/unauthenticated') {
+                userMessage = 'Authentication expired. Please refresh and log in again.';
+            } else if (err.code === 'storage/unknown') {
+                userMessage = 'Upload failed. Please check your internet connection and try again.';
+            }
+            
+            setError(`Error: ${userMessage}`);
         } finally {
             setLoading(false);
         }

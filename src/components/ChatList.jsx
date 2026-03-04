@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { updateDoc, doc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { PlusOutlined, SettingOutlined, MenuOutlined, StarOutlined, StarFilled, UserOutlined, DeleteOutlined, LogoutOutlined } from '@ant-design/icons';
+import { PlusOutlined, MenuOutlined, StarOutlined, StarFilled, UserOutlined, DeleteOutlined, LogoutOutlined } from '@ant-design/icons';
 import { Dropdown, Modal } from 'antd';
 
 const ChatList = ({ chats, currentChat, setCurrentChat, startNewChat, user, isOpen, onClose, onShowSettings, width }) => {

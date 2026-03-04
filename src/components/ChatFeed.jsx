@@ -68,8 +68,9 @@ const ChatFeed = ({ chats, chatId, user, onMenuClick }) => {
         });
 
         return () => {
-            timersRef.current.forEach(timerId => clearTimeout(timerId));
-            timersRef.current.clear();
+            const timers = timersRef.current;
+            timers.forEach(timerId => clearTimeout(timerId));
+            timers.clear();
         };
     }, [messages, chatId]);
 
@@ -124,7 +125,7 @@ const ChatFeed = ({ chats, chatId, user, onMenuClick }) => {
                 })}
                 <div ref={messagesEndRef} />
             </div>
-            <MessageForm sendMessage={sendMessage} />
+            <MessageForm sendMessage={sendMessage} user={user} />
         </div>
     );
 };

@@ -2,8 +2,24 @@ import { useState } from "react";
 import { SendOutlined, PaperClipOutlined, ClockCircleOutlined } from "@ant-design/icons";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase";
+import { auth } from "../firebase";
 
-const MessageForm = ({ sendMessage }) => {
+// Helper function to determine MIME type from file extension
+const getMimeTypeFromExtension = (fileName) => {
+    const ext = fileName.split('.').pop().toLowerCase();
+    const mimeTypes = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'mp4': 'video/mp4',
+        'webm': 'video/webm'
+    };
+    return mimeTypes[ext] || 'application/octet-stream';
+};
+
+const MessageForm = ({ sendMessage, user }) => {
     const [value, setValue] = useState('');
     const [timerValue, setTimerValue] = useState('');
     const [showTimer, setShowTimer] = useState(false);
@@ -24,17 +40,79 @@ const MessageForm = ({ sendMessage }) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        const timer = parseInt(timerValue, 10) || 0;
-        const storageRef = ref(storage, `files/${Date.now()}_${file.name}`);
-        await uploadBytes(storageRef, file);
-        const downloadURL = await getDownloadURL(storageRef);
+        try {
+            // Check auth first
+            const currentUser = auth.currentUser;
+            if (!currentUser) {
+                throw new Error('User not authenticated. Please log in again.');
+            }
 
-        sendMessage({
-            attachments: [{ file: downloadURL, type: file.type }],
-            timer: timer > 0 ? timer : null
-        });
-        setTimerValue('');
-        setShowTimer(false);
+            console.log('📋 Authentication Check:');
+            console.log('  ✓ User logged in:', currentUser.email);
+            console.log('  ✓ User UID:', currentUser.uid);
+            console.log('  ✓ Auth token available');
+
+            // Validate file size (20 MB limit)
+            const maxSize = 20 * 1024 * 1024;
+            if (file.size > maxSize) {
+                throw new Error('File size exceeds 20 MB limit.');
+            }
+
+            console.log('📁 File Check:');
+            console.log('  ✓ File name:', file.name);
+            console.log('  ✓ File size:', (file.size / 1024 / 1024).toFixed(2), 'MB');
+            console.log('  ✓ File type:', file.type || 'Not detected');
+
+            const timer = parseInt(timerValue, 10) || 0;
+            const fileExtension = file.name.split('.').pop();
+            const simpleFileName = `${Date.now()}.${fileExtension}`;
+            const storageRef = ref(storage, `files/${currentUser.uid}/${simpleFileName}`);
+            
+            const contentType = file.type || getMimeTypeFromExtension(file.name);
+            
+            const metadata = {
+                contentType: contentType
+            };
+            
+            console.log('☁️ Firebase Storage Info:');
+            console.log('  ✓ Storage path: files/' + currentUser.uid + '/' + simpleFileName);
+            console.log('  ✓ Content type:', contentType);
+            console.log('  ✓ Storage bucket: chat-appln-c94b0.firebasestorage.app');
+            
+            console.log('⬆️ Starting file upload...');
+            const uploadResult = await uploadBytes(storageRef, file, metadata);
+            console.log('✅ Upload successful!');
+            
+            console.log('🔗 Getting download URL...');
+            const downloadURL = await getDownloadURL(uploadResult.ref);
+            console.log('✅ Download URL obtained');
+
+            sendMessage({
+                attachments: [{ file: downloadURL, type: contentType }],
+                timer: timer > 0 ? timer : null
+            });
+            
+            console.log('💬 Message sent successfully!');
+            setTimerValue('');
+            setShowTimer(false);
+        } catch (err) {
+            console.error('❌ ERROR DETAILS:');
+            console.error('  Code:', err.code);
+            console.error('  Message:', err.message);
+            console.error('  Server Response:', err.serverResponse);
+            console.error('  Full error:', JSON.stringify(err, null, 2));
+            
+            let userMessage = err.message;
+            if (err.code === 'storage/unauthenticated') {
+                userMessage = 'Authentication expired. Please refresh page and log in again.';
+            } else if (err.code === 'storage/unauthorized') {
+                userMessage = 'Permission denied. Check Storage rules in Firebase Console.';
+            } else if (err.code === 'storage/unknown') {
+                userMessage = 'Unknown error. Check Firebase Console Storage rules. Verify Blaze plan is active.';
+            }
+            
+            alert('Upload failed: ' + userMessage);
+        }
     };
 
     return (
